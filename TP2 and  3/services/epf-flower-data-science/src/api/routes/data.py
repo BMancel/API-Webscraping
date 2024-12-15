@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from src.schemas.message import MessageResponse
 from fastapi.responses import JSONResponse
+from sklearn.model_selection import train_test_split
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 import os
@@ -18,6 +19,15 @@ def preprocess_iris_data(df: pd.DataFrame):
     X = df.drop(columns=["Id", "Species"])
     y = df["Species"]
     return X, y
+
+def split_data(X, y, test_size=0.2, random_state=42):
+    try:
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=test_size, random_state=random_state
+        )
+        return X_train, X_test, y_train, y_test
+    except Exception as e:
+        raise Exception(f"Error during train-test split: {e}")
 
 @router.get("/load-iris-data", response_model=MessageResponse)
 def load_iris_data():
@@ -80,6 +90,48 @@ def process_iris_data():
             detail={
                 "status": "error",
                 "message": f"Error processing the data: {str(ve)}"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "status": "error",
+                "message": f"An unexpected error occurred: {str(e)}"
+            }
+        )
+    
+@router.get("/split-iris-data", response_model=MessageResponse)
+def split_iris_data(test_size: float = 0.2, random_state: int = 42):
+    try:
+        if not 0 < test_size < 1:
+            raise ValueError("test_size must be between 0 and 1")
+            
+        df = load_iris_data_as_dataframe()
+        X, y = preprocess_iris_data(df)
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+        X_train, X_test, y_train, y_test = split_data(X_scaled, y, test_size, random_state)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": "success",
+                "message": "Data split successfully",
+                "data": {
+                    "X_train": X_train.tolist(),
+                    "X_test": X_test.tolist(),
+                    "y_train": y_train.tolist(),
+                    "y_test": y_test.tolist()
+                }
+            }
+        )
+    except ValueError as ve:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "status": "error",
+                "message": f"Invalid parameters: {str(ve)}"
             }
         )
     except Exception as e:
