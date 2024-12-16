@@ -4,7 +4,10 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 import json
 import os
+import numpy as np
+from joblib import load
 from joblib import dump
+from pydantic import BaseModel
 from sklearn.preprocessing import StandardScaler
 from src.api.routes.data import load_iris_data_as_dataframe, preprocess_iris_data, split_data
 
@@ -49,6 +52,50 @@ def train_iris_model():
             "message": "Model trained and saved successfully",
             "accuracy": accuracy,
             "model_file": model_path
+        }
+        
+        return JSONResponse(content=response)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+class IrisFeatures(BaseModel):
+    features: list[float]
+
+@router.post("/predict-iris-model", response_model=dict)
+def predict_iris_model(data: IrisFeatures):
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        model_path = os.path.join(base_dir, "../../models/iris_classification_model_rf.joblib")
+        
+        if not os.path.exists(model_path):
+            raise HTTPException(status_code=404, detail="Trained model not found")
+        
+        if len(data.features) != 4:
+            raise HTTPException(
+                status_code=422,
+                detail="Input must contain exactly 4 features (sepal length, sepal width, petal length, petal width)"
+            )
+
+        model = load(model_path)
+
+        df = load_iris_data_as_dataframe()
+        X_scaled, _ = preprocess_iris_data(df)
+        
+        features_array = np.array(data.features).reshape(1, -1)
+        
+        scaler_path = os.path.join(base_dir, "../../models/scaler.joblib")
+        if not os.path.exists(scaler_path):
+            raise HTTPException(status_code=404, detail="Scaler not found")
+
+        scaler = load(scaler_path)
+
+        features_array = np.array(data.features).reshape(1, -1)
+        features_scaled = scaler.transform(features_array)
+        
+        prediction = model.predict(features_scaled)
+        
+        response = {
+            "prediction": prediction.tolist()
         }
         
         return JSONResponse(content=response)
