@@ -13,8 +13,48 @@ from src.api.routes.data import load_iris_data_as_dataframe, preprocess_iris_dat
 
 router = APIRouter()
 
-@router.post("/train-iris-model", response_model=dict)
+@router.post("/train-iris-model", response_model=dict, responses={
+    200: {
+        "description": "Model trained and saved successfully",
+        "content": {
+            "application/json": {
+                "example": {
+                    "message": "Model trained and saved successfully",
+                    "accuracy": 0.9,
+                    "model_file": "path/to/model.joblib"
+                }
+            }
+        }
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "example": {
+                    "status": "error",
+                    "message": "An error occurred while training the model"
+                }
+            }
+        }
+    }
+})
 def train_iris_model():
+    """
+    Train a Random Forest classifier on the Iris dataset.
+    
+    This endpoint loads the Iris dataset, preprocesses it, splits it into training and testing sets,
+    trains a Random Forest model with parameters from the configuration file, and saves both the
+    model and the scaler for later use.
+    
+    Returns:
+        JSONResponse: A JSON response containing:
+            - message: Success message
+            - accuracy: Model's accuracy on the test set
+            - model_file: Path where the model is saved
+            
+    Raises:
+        HTTPException: If there's an error during training (500) or if required files are not found
+    """
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         params_path = os.path.join(base_dir, "../../config/model_parameters.json")
@@ -59,10 +99,84 @@ def train_iris_model():
         raise HTTPException(status_code=500, detail=str(e))
 
 class IrisFeatures(BaseModel):
+    """
+    Pydantic model for Iris prediction input features.
+    
+    Attributes:
+        features (list[float]): List of 4 float values representing sepal length, sepal width,
+                              petal length, and petal width in centimeters
+    """
     features: list[float]
 
-@router.post("/predict-iris-model", response_model=dict)
+@router.post("/predict-iris-model", response_model=dict, responses={
+    200: {
+        "description": "Successful prediction",
+        "content": {
+            "application/json": {
+                "example": {
+                    "prediction": ["setosa"]
+                }
+            }
+        }
+    },
+    404: {
+        "description": "Model or scaler not found",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Trained model or scaler not found"
+                }
+            }
+        }
+    },
+    422: {
+        "description": "Validation Error",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": [
+                        {
+                            "loc": ["body", "features"],
+                            "msg": "Field must contain exactly 4 float values",
+                            "type": "value_error"
+                        }
+                    ]
+                }
+            }
+        }
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "example": {
+                    "detail": "Error message"
+                }
+            }
+        }
+    }
+})
 def predict_iris_model(data: IrisFeatures):
+    """
+    Make predictions using the trained Iris model.
+    
+    This endpoint loads the trained Random Forest model and scaler, preprocesses the input features,
+    and returns the predicted Iris species.
+    
+    Args:
+        data (IrisFeatures): Input features for prediction containing:
+            - features (list[float]): List of 4 float values for Iris measurements
+            
+    Returns:
+        JSONResponse: A JSON response containing:
+            - prediction: List with the predicted Iris species
+            
+    Raises:
+        HTTPException: 
+            - 404: If the trained model or scaler is not found
+            - 422: If the input data validation fails (e.g., wrong number of features)
+            - 500: If there's an error during prediction
+    """
     try:
         base_dir = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(base_dir, "../../models/iris_classification_model_rf.joblib")
