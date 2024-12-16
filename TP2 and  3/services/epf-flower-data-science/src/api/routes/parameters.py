@@ -21,6 +21,12 @@ class ParametersRequest(BaseModel):
         example={"key1": "value1", "key2": "value2", "key3": "value3"}
     )
 
+class UpdateParametersRequest(BaseModel):
+    updated_parameters: dict = Field(
+        ..., 
+        example={"key1": "new_value1", "key2": "new_value2"}
+    )
+
 @router.get("/retrieve-parameters", response_model=dict)
 def retrieve_parameters():
     try:
@@ -54,5 +60,31 @@ def add_parameters(request: ParametersRequest):
     
     except exceptions.GoogleCloudError as e:
         raise HTTPException(status_code=500, detail=f"Firestore error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+@router.put("/update-parameters", response_model=dict)
+def update_parameters(request: UpdateParametersRequest):
+    try:
+        parameters_ref = firestore.client().collection("parameters").document("parameters")
+        doc = parameters_ref.get()
+
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Parameters document not found in Firestore")
+
+        current_parameters = doc.to_dict()
+        
+        merged_parameters = {**current_parameters, **request.updated_parameters}
+        parameters_ref.set(merged_parameters)
+        
+        return JSONResponse(content={
+            "message": "Parameters updated successfully",
+            "parameters": merged_parameters
+        })
+
+    except exceptions.GoogleCloudError as e:
+        raise HTTPException(status_code=500, detail=f"Firestore error: {str(e)}")
+    except HTTPException as e:
+        raise e
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
