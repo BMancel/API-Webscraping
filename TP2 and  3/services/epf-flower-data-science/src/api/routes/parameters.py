@@ -27,6 +27,12 @@ class UpdateParametersRequest(BaseModel):
         example={"key1": "new_value1", "key2": "new_value2"}
     )
 
+class DeleteParametersRequest(BaseModel):
+    parameters_to_delete: list = Field(
+        ..., 
+        example=["key1", "key2"]
+    )
+
 @router.get("/retrieve-parameters", response_model=dict)
 def retrieve_parameters():
     try:
@@ -86,5 +92,33 @@ def update_parameters(request: UpdateParametersRequest):
         raise HTTPException(status_code=500, detail=f"Firestore error: {str(e)}")
     except HTTPException as e:
         raise e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+    
+@router.delete("/delete-parameters", response_model=dict)
+def delete_parameters(request: DeleteParametersRequest):
+    try:
+        parameters_ref = firestore.client().collection("parameters").document("parameters")
+        doc = parameters_ref.get()
+
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Parameters document not found in Firestore")
+
+        current_parameters = doc.to_dict()
+        
+        for param in request.parameters_to_delete:
+            if param in current_parameters:
+                del current_parameters[param]
+            
+        parameters_ref.set(current_parameters)
+        
+        return JSONResponse(content={
+            "message": "Parameters deleted successfully",
+            "deleted_parameters": request.parameters_to_delete,
+            "remaining_parameters": current_parameters
+        })
+
+    except exceptions.GoogleCloudError as e:
+        raise HTTPException(status_code=500, detail=f"Firestore error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
